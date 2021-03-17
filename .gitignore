@@ -1,4 +1,3 @@
-
 # Created by https://www.toptal.com/developers/gitignore/api/scala,gradle,intellij+all,spark
 # Edit at https://www.toptal.com/developers/gitignore?templates=scala,gradle,intellij+all,spark
 
@@ -211,3 +210,5 @@ gradle-app.setting
 **/build/
 
 # End of https://www.toptal.com/developers/gitignore/api/scala,gradle,intellij+all,spark
+
+data/

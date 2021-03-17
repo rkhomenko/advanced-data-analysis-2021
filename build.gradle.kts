@@ -8,7 +8,7 @@ repositories {
 }
 
 val scalaVersion = "2.12"
-val sparkVersion = "3.1.0"
+val sparkVersion = "3.1.1"
 
 dependencies {
     implementation(group = "org.scala-lang", name = "scala-library", version = "2.12.13")

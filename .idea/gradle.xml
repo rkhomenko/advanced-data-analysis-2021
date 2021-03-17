@@ -9,7 +9,7 @@
         <option name="gradleHome" value="/usr/share/java/gradle" />
         <option name="modules">
           <set>
-            <option value="/mnt/data/files/source/advanced-data-analysis-2021" />
+            <option value="$PROJECT_DIR$" />
           </set>
         </option>
       </GradleProjectSettings>
