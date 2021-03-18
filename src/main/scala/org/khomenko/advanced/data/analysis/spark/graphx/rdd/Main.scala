@@ -1,29 +1,22 @@
 package org.khomenko.advanced.data.analysis.spark.graphx.rdd
 
 import org.apache.spark.sql.SparkSession
+import Utils.loadGraph
+import org.apache.spark.graphx.Graph
 
 object Main extends App {
+  if (args.length < 1) {
+    println("Path to tsv needed")
+    System.exit(-1)
+  }
+
   val spark = SparkSession
     .builder()
     .master("local[*]")
     .appName("graphTest")
     .getOrCreate()
 
-  import org.apache.spark.graphx.{Edge, Graph, VertexId}
-
-  case class Props(name: String, value: Int)
-
-  val verticesRDD = spark.sparkContext.parallelize(List(
-    (1L, Props("A", 10)),
-    (2L, Props("B", 20)),
-    (3L, Props("C", 30)),
-    (4L, Props("D", 40))))
-  val edgesRDD = spark.sparkContext.parallelize(List(
-    Edge(1L, 2L, 1),
-    Edge(2L, 3L, 2),
-    Edge(3L, 4L, 3),
-    Edge(4L, 1L, 4)))
-
-  val graph: Graph[Props, Int] = Graph(verticesRDD, edgesRDD)
+  val (verticesRDD, edgesRDD) = loadGraph(args(0), spark)
+  val graph: Graph[Vertex, Int] = Graph(verticesRDD, edgesRDD)
   graph.inDegrees.foreach(println)
 }
