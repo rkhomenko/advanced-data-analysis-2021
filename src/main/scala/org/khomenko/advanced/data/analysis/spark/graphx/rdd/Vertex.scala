@@ -4,4 +4,6 @@ object VertexType extends Enumeration {
   val Disease, Drug = Value
 }
 
-case class Vertex(vertexType: VertexType.Value, code: String)
+case class Vertex(vertexType: VertexType.Value, code: String) {
+  override def toString: String = s"${vertexType} ${code}"
+}

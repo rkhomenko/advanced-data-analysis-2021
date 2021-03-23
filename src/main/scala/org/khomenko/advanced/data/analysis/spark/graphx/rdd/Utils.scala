@@ -1,49 +1,89 @@
 package org.khomenko.advanced.data.analysis.spark.graphx.rdd
 
+import java.io.{File, PrintWriter}
 import org.apache.spark.graphx.Edge
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{lit, row_number}
+import org.apache.spark.sql.functions.{col, lit, monotonically_increasing_id}
 
 object Utils {
   def loadGraph(path: String, spark: SparkSession): (RDD[(Long, Vertex)], RDD[Edge[Int]]) = {
-    val drug = "drug"
-    val disease = "disease"
-
     val df = spark.read.format("csv")
       .option("sep", "\t")
       .option("inferSchema", "true")
       .option("header", "true")
       .load(path)
-    val diseases = df.select(df("Disease")).distinct()
-      .withColumn("dis_id", row_number().over(Window.orderBy("Disease")))
 
-    val drugs = df.select(df("Drug")).distinct()
-      .withColumn("drug_id", row_number().over(Window.orderBy("Drug")))
-
-    val edges = df.as("df").join(diseases.as("dis"), df("Disease") === diseases("Disease"), "right")
-      .join(drugs.as("drs"), df("Drug") === drugs("Drug"), "right")
-      .select("dis.dis_id", "drs.drug_id")
-      .rdd
-      .map(row => Edge(row.getInt(0), row.getInt(1), 1))
-
-    val vertices = diseases
+    val verticesDf = df.select(df("Disease")).distinct()
       .withColumnRenamed("Disease", "code")
-      .withColumnRenamed("dis_id", "id")
-      .withColumn("type", lit(disease))
-      .union(
-        drugs
-          .withColumnRenamed("Drug", "code")
-          .withColumnRenamed("drug_id", "id")
-          .withColumn("type", lit(drug))
-      )
+      .withColumn("type", lit("disease"))
+      .union(df.select(df("Drug")).distinct()
+        .withColumnRenamed("Drug", "code")
+        .withColumn("type", lit("drug")))
+      .withColumn("id", monotonically_increasing_id())
+
+    val diseases = verticesDf.select(verticesDf("id"), verticesDf("code"))
+      .where(verticesDf("type") === "disease")
+
+    val drugs = verticesDf.select(verticesDf("id"), verticesDf("code"))
+      .where(verticesDf("type") === "drug")
+
+    val edges = df.as("df")
+      .join(diseases.as("dis"), df("Disease") === diseases("code"), "right")
+      .join(drugs.as("drs"), col("df.Drug") === col("drs.code"), "right")
+      .select(col("dis.id").alias("dis_id"), col("drs.id").alias("drs_id"))
       .rdd
-      .map(row => row.getString(2) match {
-        case "drug" => (row.getInt(1).toLong, Vertex(VertexType.Drug, row.getString(0)))
-        case "disease" => (row.getInt(1).toLong, Vertex(VertexType.Disease, row.getString(0)))
+      .map(row => Edge(row.getAs[Long]("dis_id"), row.getAs[Long]("drs_id"), 1))
+
+    val vertices = verticesDf
+      .rdd
+      .map(row => row.getAs[String]("type") match {
+        case "drug" => (row.getAs[Long]("id"), Vertex(
+          VertexType.Drug,
+          row.getAs[String]("code")
+        ))
+        case "disease" => (row.getAs[Long]("id"), Vertex(
+          VertexType.Disease,
+          row.getAs[String]("code")
+        ))
       })
 
     (vertices, edges)
+  }
+
+  def saveToGraphML(edges: RDD[Edge[Int]], vertices: RDD[(Long, Vertex)], path: String): Unit = {
+    val begin =
+      """<?xml version="1.0" encoding="UTF-8"?>
+        |<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+        |xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        |xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+        |http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+        |<key attr.name="label" attr.type="string" for="node" id="label"/>
+        |<graph id="G" edgedefault="undirected">""".stripMargin
+    val end =
+      """</graph>
+        |</graphml>""".stripMargin
+
+    val nodes = vertices
+      .map(t => {
+        s"""<node id="n${t._1}">
+           |<data key="label">${t._2}</data>
+           |</node>""".stripMargin
+      })
+      .collect()
+
+    val eds = edges
+      .zipWithUniqueId()
+      .map((t) => {
+        s"""<edge id="e${t._2}" source="n${t._1.srcId}" target="n${t._1.dstId}"/>"""
+      })
+      .collect()
+
+    val pw = new PrintWriter(new File(path))
+    pw.println(begin)
+    nodes.foreach(s => pw.println(s))
+    eds.foreach(s => pw.println(s))
+    pw.println(end)
+    pw.close()
   }
 }
