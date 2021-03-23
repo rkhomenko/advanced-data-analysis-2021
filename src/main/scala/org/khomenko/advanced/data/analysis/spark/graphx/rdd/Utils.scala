@@ -59,6 +59,9 @@ object Utils {
         |xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
         |http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
         |<key attr.name="label" attr.type="string" for="node" id="label"/>
+        |<key attr.name="r" attr.type="int" for="node" id="r"/>
+        |<key attr.name="g" attr.type="int" for="node" id="g"/>
+        |<key attr.name="b" attr.type="int" for="node" id="b"/>
         |<graph id="G" edgedefault="undirected">""".stripMargin
     val end =
       """</graph>
@@ -66,8 +69,26 @@ object Utils {
 
     val nodes = vertices
       .map(t => {
+        val red =
+          """<data key="r">255</data>
+            |<data key="g">0</data>
+            |<data key="b">0</data>
+            |""".stripMargin
+
+        val blue =
+          """<data key="r">0</data>
+            |<data key="g">0</data>
+            |<data key="b">255</data>
+            |""".stripMargin
+
+        val color = t._2.vertexType match {
+          case VertexType.Drug => red
+          case VertexType.Disease => blue
+        }
+
         s"""<node id="n${t._1}">
            |<data key="label">${t._2}</data>
+           |${color}
            |</node>""".stripMargin
       })
       .collect()
