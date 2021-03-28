@@ -8,8 +8,8 @@ import org.apache.spark.graphx.Graph
 import Utils.{loadGraph, saveToGraphML}
 
 object Main extends App {
-  if (args.length < 1) {
-    println("Path to tsv needed")
+  if (args.length < 2) {
+    println("Path to tsv files needed")
     System.exit(-1)
   }
 
@@ -19,7 +19,7 @@ object Main extends App {
     .appName("graphTest")
     .getOrCreate()
 
-  val (verticesRDD, edgesRDD) = loadGraph(args(0), spark)
+  val (verticesRDD, edgesRDD) = loadGraph(args(0), args(1), spark)
   val graph: Graph[Vertex, Int] = Graph(verticesRDD, edgesRDD)
 
   val pw = new PrintWriter(new File("log.txt" ))

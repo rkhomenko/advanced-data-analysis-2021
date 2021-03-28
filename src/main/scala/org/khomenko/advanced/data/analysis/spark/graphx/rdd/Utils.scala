@@ -3,11 +3,13 @@ package org.khomenko.advanced.data.analysis.spark.graphx.rdd
 import java.io.{File, PrintWriter}
 import org.apache.spark.graphx.Edge
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Dataset, Row, SparkSession}
 import org.apache.spark.sql.functions.{col, lit, monotonically_increasing_id}
 
 object Utils {
-  def loadGraph(path: String, spark: SparkSession): (RDD[(Long, Vertex)], RDD[Edge[Int]]) = {
+
+  private def loadDisease2DrugGraph(path: String, spark: SparkSession)
+               : (RDD[(Long, Vertex)], RDD[Edge[Int]], Dataset[Row]) = {
     val df = spark.read.format("csv")
       .option("sep", "\t")
       .option("inferSchema", "true")
@@ -48,7 +50,30 @@ object Utils {
         ))
       })
 
-    (vertices, edges)
+    (vertices, edges, drugs)
+  }
+
+  private def loadDrug2DrugGraph(path: String, drugs: Dataset[Row], spark: SparkSession): RDD[Edge[Int]] = {
+    val df = spark.read.format("csv")
+      .option("sep", "\t")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(path)
+
+    df.as("df")
+      .join(drugs.as("drgs1"), col("df.Drug1") === col("drgs1.code"), "inner")
+      .join(drugs.as("drgs2"), col("df.Drug2") === col("drgs2.code"), "inner")
+      .select(col("drgs1.id").alias("left_id"), col("drgs2.id").alias("right_id"))
+      .rdd
+      .map(row => Edge(row.getAs[Long]("left_id"), row.getAs[Long]("right_id"), 2))
+  }
+
+  def loadGraph(disease2DrugPath: String, drug2DrugPath: String, spark: SparkSession)
+               : (RDD[(Long, Vertex)], RDD[Edge[Int]]) = {
+    val (firstNodes, firstEdges, drugs) = loadDisease2DrugGraph(disease2DrugPath, spark)
+    val secondEdges = loadDrug2DrugGraph(drug2DrugPath, drugs, spark)
+
+    (firstNodes, firstEdges.union(secondEdges))
   }
 
   def saveToGraphML(edges: RDD[Edge[Int]], vertices: RDD[(Long, Vertex)], path: String): Unit = {
@@ -59,6 +84,7 @@ object Utils {
         |xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
         |http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
         |<key attr.name="label" attr.type="string" for="node" id="label"/>
+        |<key attr.name="weight" attr.type="int" for="edge" id="weight"/>
         |<key attr.name="r" attr.type="int" for="node" id="r"/>
         |<key attr.name="g" attr.type="int" for="node" id="g"/>
         |<key attr.name="b" attr.type="int" for="node" id="b"/>
@@ -67,20 +93,20 @@ object Utils {
       """</graph>
         |</graphml>""".stripMargin
 
+    val red =
+      """<data key="r">255</data>
+        |<data key="g">0</data>
+        |<data key="b">0</data>
+        |""".stripMargin
+
+    val blue =
+      """<data key="r">0</data>
+        |<data key="g">0</data>
+        |<data key="b">255</data>
+        |""".stripMargin
+
     val nodes = vertices
       .map(t => {
-        val red =
-          """<data key="r">255</data>
-            |<data key="g">0</data>
-            |<data key="b">0</data>
-            |""".stripMargin
-
-        val blue =
-          """<data key="r">0</data>
-            |<data key="g">0</data>
-            |<data key="b">255</data>
-            |""".stripMargin
-
         val color = t._2.vertexType match {
           case VertexType.Drug => red
           case VertexType.Disease => blue
@@ -96,7 +122,9 @@ object Utils {
     val eds = edges
       .zipWithUniqueId()
       .map((t) => {
-        s"""<edge id="e${t._2}" source="n${t._1.srcId}" target="n${t._1.dstId}"/>"""
+        s"""<edge id="e${t._2}" source="n${t._1.srcId}" target="n${t._1.dstId}">
+           |<data key="weight">${t._1.attr}</data>
+           |</edge>""".stripMargin
       })
       .collect()
 
