@@ -1,7 +1,8 @@
 package org.khomenko.advanced.data.analysis.spark.graphx.rdd
 
 import org.apache.spark.graphx.{Edge, EdgeDirection, Graph}
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 
 import java.io.{File, PrintWriter}
 
@@ -11,6 +12,8 @@ object TestMain extends App {
     .master("local[*]")
     .appName("graphTest")
     .getOrCreate()
+
+  import spark.implicits._
 
   val vertices = spark.sparkContext.parallelize(
     Seq(
@@ -37,6 +40,41 @@ object TestMain extends App {
       Edge(7L, 6L, 1)
     )
   )
+
+  val verticesDF = vertices.map(i => {
+    (i._1, i._2.vertexType.toString, i._2.code)
+  }).toDF("id", "type", "code")
+  val edgesDF = edges.map(e => (e.srcId, e.dstId, e.attr))
+    .toDF("srcId", "destId", "attr")
+  edgesDF
+    .join(verticesDF.as("vSrc"), $"vSrc.id" === $"srcId")
+    .join(verticesDF.as("vDest"), $"vDest.id" === $"destId")
+    .select(
+      col("vSrc.id").alias("srcId"),
+      col("vSrc.type").alias("srcType"),
+      col("vSrc.code").alias("srcCode"),
+      col("vDest.id").alias("destId"),
+      col("vDest.type").alias("destType"),
+      col("vDest.code").alias("destCode"),
+    )
+    .write
+    .format("org.neo4j.spark.DataSource")
+    .mode(SaveMode.Overwrite)
+    .option("authentication.basic.username", "neo4j")
+    .option("authentication.basic.password", "neo4j1")
+    .option("url", "bolt://localhost:7687")
+    .option("relationship", "EDGE")
+    .option("relationship.save.strategy", "keys")
+    .option("relationship.source.labels", ":Vertex")
+    .option("relationship.source.save.mode", "overwrite")
+    .option("relationship.source.node.keys", "srcId:id")
+    .option("relationship.source.node.properties", "srcType:type,srcCode:code")
+    .option("relationship.target.labels", ":Vertex")
+    .option("relationship.target.node.keys", "destId:id")
+    .option("relationship.target.node.properties", "destType:type,destCode:code")
+    .option("relationship.target.save.mode", "overwrite")
+    .option("schema.optimization.type", "NODE_CONSTRAINTS")
+    .save()
 
   val graph = Graph[Vertex, Int](vertices, edges)
   Utils.saveToGraphML(vertices, edges, "test-graph.graphml")
