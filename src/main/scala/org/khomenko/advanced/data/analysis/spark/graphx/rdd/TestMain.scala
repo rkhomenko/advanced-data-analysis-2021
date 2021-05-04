@@ -27,6 +27,7 @@ object TestMain extends App {
   val edges = spark.sparkContext.parallelize(
     Seq(
       Edge(2L, 3L, 2),
+      Edge(3L, 2L, 2),
       Edge(0L, 2L, 1),
       Edge(0L, 5L, 1),
       Edge(0L, 4L, 1),
@@ -47,7 +48,7 @@ object TestMain extends App {
 
   val diseases = Seq(0L, 1L, 7L)
   val initialGraph = graph.mapVertices((id, v) => if (diseases contains id) v.copy(1) else v)
-  val result = initialGraph.pregel(0, activeDirection = EdgeDirection.Either, maxIterations = 30)(
+  val result = initialGraph.pregel(0, activeDirection = EdgeDirection.Either, maxIterations = 60)(
     (id, v, msg) => {
       v.vertexType match {
         case VertexType.Drug => v.copy(msg)
@@ -61,8 +62,7 @@ object TestMain extends App {
 
         Iterator((triplet.dstId, 1))
       } else if (triplet.srcAttr.vertexType == VertexType.Drug &&
-        triplet.dstAttr.vertexType == VertexType.Drug &&
-        triplet.dstAttr.value == 1) {
+        triplet.dstAttr.vertexType == VertexType.Drug) {
 
         Iterator((triplet.dstId, 2))
       }
@@ -70,17 +70,17 @@ object TestMain extends App {
         Iterator.empty
       }
     },
-    (a, b) => math.max(a, b)
+    (a, b) => a + b
   )
 
   val resultVertices = result.vertices
-    .filter(t => t._2.value == 2)
+    .filter(t => t._2.vertexType == VertexType.Drug && t._2.value == 3)
     .collect()
 
   pw.println(s"Arr size is: ${resultVertices.size}")
 
   resultVertices.foreach(t => {
-    pw.print(s"${t._1}, ${t._2.value}")
+    pw.println(s"${t._1}, ${t._2}, ${t._2.value}")
   })
 
   pw.close()
